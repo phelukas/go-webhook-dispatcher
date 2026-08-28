@@ -11,6 +11,17 @@ import (
 //go:embed migrations/001_initial.sql
 var initialMigration string
 
+//go:embed migrations/002_delivery_leases.sql
+var deliveryLeasesMigration string
+
+var migrations = []struct {
+	version int
+	sql     string
+}{
+	{version: 1, sql: initialMigration},
+	{version: 2, sql: deliveryLeasesMigration},
+}
+
 // Migrate applies versioned schema changes under a transaction-scoped lock.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `
@@ -32,28 +43,33 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("lock migrations: %w", err)
 	}
 
-	var applied bool
-	if err := tx.QueryRow(
-		ctx,
-		"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = 1)",
-	).Scan(&applied); err != nil {
-		return fmt.Errorf("check migration version: %w", err)
-	}
-	if applied {
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit migration check: %w", err)
+	for _, migration := range migrations {
+		var applied bool
+		if err := tx.QueryRow(
+			ctx,
+			"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
+			migration.version,
+		).Scan(&applied); err != nil {
+			return fmt.Errorf("check migration version %d: %w", migration.version, err)
 		}
-		return nil
+		if applied {
+			continue
+		}
+
+		if _, err := tx.Exec(ctx, migration.sql); err != nil {
+			return fmt.Errorf("apply migration %d: %w", migration.version, err)
+		}
+		if _, err := tx.Exec(
+			ctx,
+			"INSERT INTO schema_migrations (version) VALUES ($1)",
+			migration.version,
+		); err != nil {
+			return fmt.Errorf("record migration %d: %w", migration.version, err)
+		}
 	}
 
-	if _, err := tx.Exec(ctx, initialMigration); err != nil {
-		return fmt.Errorf("apply migration 1: %w", err)
-	}
-	if _, err := tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES (1)"); err != nil {
-		return fmt.Errorf("record migration 1: %w", err)
-	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit migration 1: %w", err)
+		return fmt.Errorf("commit migrations: %w", err)
 	}
 	return nil
 }

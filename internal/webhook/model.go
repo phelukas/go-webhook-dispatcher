@@ -7,6 +7,7 @@ import (
 )
 
 var ErrIdempotencyConflict = errors.New("idempotency key already used with different content")
+var ErrLeaseLost = errors.New("webhook processing lease is no longer owned")
 
 // Submission is the validated input persisted before asynchronous delivery.
 type Submission struct {
@@ -24,5 +25,12 @@ type Webhook struct {
 	EventType      string          `json:"event_type"`
 	Payload        json.RawMessage `json:"payload"`
 	Status         string          `json:"status"`
+	AttemptCount   int             `json:"attempt_count"`
 	CreatedAt      time.Time       `json:"created_at"`
+}
+
+// Claim is a webhook reserved for one worker under a fenced lease.
+type Claim struct {
+	Webhook
+	LeaseToken string `json:"-"`
 }
