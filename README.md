@@ -10,19 +10,23 @@ de arquitetura, concorrência, idempotência, observabilidade e operação.
 
 ## Estado atual
 
-O primeiro incremento implementa a fundação operacional do serviço:
+Os dois primeiros incrementos implementam a fundação operacional e a entrada
+durável de webhooks:
 
 - servidor HTTP com `net/http`;
 - configuração por variáveis de ambiente com validação;
 - logs JSON estruturados com `log/slog`;
 - métricas no formato Prometheus;
 - endpoints de liveness e readiness;
+- `POST /v1/webhooks` com validação e limite de tamanho;
+- idempotência por chave, com detecção de conteúdo conflitante;
+- PostgreSQL, migração versionada e teste de integração real;
 - encerramento seguro com timeout;
 - testes unitários, detector de corrida e CI em duas versões do Go;
 - imagem Docker multi-stage executada por usuário não privilegiado.
 
-A submissão e a entrega de webhooks ainda não fazem parte deste incremento. O
-roadmap abaixo diferencia claramente o que está pronto do que será construído.
+A entrega HTTP assíncrona ainda não faz parte do projeto. O roadmap abaixo
+diferencia claramente persistência concluída de processamento futuro.
 
 ## Executando
 
@@ -46,6 +50,7 @@ GET /         informações do serviço
 GET /healthz  liveness
 GET /readyz   readiness
 GET /metrics  métricas Prometheus
+POST /v1/webhooks  submissão idempotente
 ```
 
 Exemplo:
@@ -55,11 +60,30 @@ curl http://localhost:8080/healthz
 curl http://localhost:8080/metrics
 ```
 
+Submissão:
+
+```bash
+curl -i http://localhost:8080/v1/webhooks \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: order-123' \
+  -d '{
+    "target_url": "https://example.com/hooks",
+    "event_type": "order.created",
+    "payload": {"order_id": "123"}
+  }'
+```
+
+A primeira submissão retorna `202 Accepted`. Repetir a mesma chave e conteúdo
+retorna `200 OK` com `replayed: true` e o mesmo identificador. Reutilizar a
+chave com conteúdo diferente retorna `409 Conflict`.
+
 ## Configuração
 
 | Variável | Padrão | Finalidade |
 | --- | --- | --- |
 | `HTTP_ADDR` | `:8080` | endereço do servidor HTTP |
+| `DATABASE_URL` | PostgreSQL local `dispatcher` | conexão com o banco |
+| `DATABASE_TIMEOUT` | `5s` | limite para conexão e migrações |
 | `READ_HEADER_TIMEOUT` | `5s` | proteção contra headers lentos |
 | `SHUTDOWN_TIMEOUT` | `10s` | limite para drenar requisições |
 
@@ -77,13 +101,19 @@ internal/app ----------> ciclo de vida e graceful shutdown
    +--> internal/config -> ambiente e validação
    |
    +--> internal/httpapi
-           +--> health/readiness
-           +--> logs estruturados
-           +--> métricas Prometheus
+   |       +--> health/readiness
+   |       +--> POST /v1/webhooks
+   |       +--> logs e métricas
+   |
+   +--> internal/postgres
+           +--> migrações versionadas
+           +--> submissões idempotentes
 ```
 
-A decisão de começar pela base operacional está registrada em
-[`docs/adr/0001-service-foundation.md`](docs/adr/0001-service-foundation.md).
+Decisões arquiteturais:
+
+- [`ADR 0001: fundação operacional`](docs/adr/0001-service-foundation.md);
+- [`ADR 0002: idempotência no PostgreSQL`](docs/adr/0002-postgres-idempotency.md).
 
 ## Qualidade
 
@@ -100,15 +130,22 @@ go test -race -cover ./...
 go build ./cmd/api
 ```
 
+O teste PostgreSQL é executado quando `TEST_DATABASE_URL` está definida. A CI
+inicia uma instância isolada do PostgreSQL 16 para esse cenário.
+
 ## Roadmap
 
 - [x] fundação HTTP, métricas, logs e graceful shutdown;
-- [ ] API idempotente para submissão de webhooks;
-- [ ] PostgreSQL com migrações e padrão outbox;
+- [x] API idempotente para submissão de webhooks;
+- [x] PostgreSQL com migrações e fila durável de submissões;
 - [ ] worker pool com concorrência limitada;
 - [ ] retries com backoff e dead-letter queue;
 - [ ] métricas de entrega e testes de integração;
 - [ ] teste de carga e documentação dos resultados.
+
+Antes da entrega externa, o worker também deverá bloquear destinos inseguros
+para reduzir risco de SSRF. Apenas validar o formato da URL não é suficiente
+quando o serviço começar a realizar chamadas de rede.
 
 ## Licença
 

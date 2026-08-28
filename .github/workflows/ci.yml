@@ -11,6 +11,22 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dispatcher
+          POSTGRES_USER: dispatcher
+          POSTGRES_PASSWORD: dispatcher
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dispatcher -d dispatcher"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://dispatcher:dispatcher@localhost:5432/dispatcher?sslmode=disable
     strategy:
       matrix:
         go-version: ["1.26.x", "1.27.x"]
