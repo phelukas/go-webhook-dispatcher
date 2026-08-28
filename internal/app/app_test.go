@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestRunStopsAfterContextCancellation(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, cfg, logger)
+		done <- runHTTP(ctx, cfg, logger, http.NewServeMux())
 	}()
 
 	select {

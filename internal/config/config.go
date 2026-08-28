@@ -8,6 +8,8 @@ import (
 
 const (
 	defaultHTTPAddress       = ":8080"
+	defaultDatabaseURL       = "postgresql://dispatcher:dispatcher@localhost:5432/dispatcher?sslmode=disable"
+	defaultDatabaseTimeout   = 5 * time.Second
 	defaultReadHeaderTimeout = 5 * time.Second
 	defaultShutdownTimeout   = 10 * time.Second
 )
@@ -15,6 +17,8 @@ const (
 // Config contains the process-level settings required by the HTTP service.
 type Config struct {
 	HTTPAddress       string
+	DatabaseURL       string
+	DatabaseTimeout   time.Duration
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
 }
@@ -26,6 +30,11 @@ func Load() (Config, error) {
 
 // LoadFrom keeps configuration parsing deterministic and easy to test.
 func LoadFrom(lookup func(string) (string, bool)) (Config, error) {
+	databaseTimeout, err := duration(lookup, "DATABASE_TIMEOUT", defaultDatabaseTimeout)
+	if err != nil {
+		return Config{}, err
+	}
+
 	readHeaderTimeout, err := duration(lookup, "READ_HEADER_TIMEOUT", defaultReadHeaderTimeout)
 	if err != nil {
 		return Config{}, err
@@ -38,6 +47,8 @@ func LoadFrom(lookup func(string) (string, bool)) (Config, error) {
 
 	return Config{
 		HTTPAddress:       stringValue(lookup, "HTTP_ADDR", defaultHTTPAddress),
+		DatabaseURL:       stringValue(lookup, "DATABASE_URL", defaultDatabaseURL),
+		DatabaseTimeout:   databaseTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ShutdownTimeout:   shutdownTimeout,
 	}, nil

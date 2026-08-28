@@ -17,6 +17,12 @@ func TestLoadFromUsesDefaults(t *testing.T) {
 	if cfg.HTTPAddress != ":8080" {
 		t.Errorf("HTTPAddress = %q, want %q", cfg.HTTPAddress, ":8080")
 	}
+	if cfg.DatabaseURL != defaultDatabaseURL {
+		t.Errorf("DatabaseURL = %q, want %q", cfg.DatabaseURL, defaultDatabaseURL)
+	}
+	if cfg.DatabaseTimeout != 5*time.Second {
+		t.Errorf("DatabaseTimeout = %s, want %s", cfg.DatabaseTimeout, 5*time.Second)
+	}
 	if cfg.ReadHeaderTimeout != 5*time.Second {
 		t.Errorf("ReadHeaderTimeout = %s, want %s", cfg.ReadHeaderTimeout, 5*time.Second)
 	}
@@ -30,6 +36,8 @@ func TestLoadFromReadsEnvironment(t *testing.T) {
 
 	values := map[string]string{
 		"HTTP_ADDR":           "127.0.0.1:9090",
+		"DATABASE_URL":        "postgresql://example/test",
+		"DATABASE_TIMEOUT":    "1s",
 		"READ_HEADER_TIMEOUT": "2s",
 		"SHUTDOWN_TIMEOUT":    "3s",
 	}
@@ -45,6 +53,12 @@ func TestLoadFromReadsEnvironment(t *testing.T) {
 
 	if cfg.HTTPAddress != "127.0.0.1:9090" {
 		t.Errorf("HTTPAddress = %q", cfg.HTTPAddress)
+	}
+	if cfg.DatabaseURL != "postgresql://example/test" {
+		t.Errorf("DatabaseURL = %q", cfg.DatabaseURL)
+	}
+	if cfg.DatabaseTimeout != time.Second {
+		t.Errorf("DatabaseTimeout = %s", cfg.DatabaseTimeout)
 	}
 	if cfg.ReadHeaderTimeout != 2*time.Second {
 		t.Errorf("ReadHeaderTimeout = %s", cfg.ReadHeaderTimeout)
