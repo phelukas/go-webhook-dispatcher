@@ -21,12 +21,15 @@ durável de webhooks:
 - `POST /v1/webhooks` com validação e limite de tamanho;
 - idempotência por chave, com detecção de conteúdo conflitante;
 - PostgreSQL, migração versionada e teste de integração real;
+- claim concorrente com lease e fencing token no PostgreSQL;
+- worker pool isolado com limite explícito de concorrência;
 - encerramento seguro com timeout;
 - testes unitários, detector de corrida e CI em duas versões do Go;
 - imagem Docker multi-stage executada por usuário não privilegiado.
 
-A entrega HTTP assíncrona ainda não faz parte do projeto. O roadmap abaixo
-diferencia claramente persistência concluída de processamento futuro.
+A infraestrutura do worker já existe e possui testes, mas ainda não é iniciada
+pela aplicação. A entrega HTTP assíncrona não faz parte do projeto. O roadmap
+abaixo diferencia o mecanismo interno concluído da integração futura.
 
 ## Executando
 
@@ -106,14 +109,20 @@ internal/app ----------> ciclo de vida e graceful shutdown
    |       +--> logs e métricas
    |
    +--> internal/postgres
-           +--> migrações versionadas
-           +--> submissões idempotentes
+   |       +--> migrações versionadas
+   |       +--> submissões idempotentes
+   |       +--> claim/lease com SKIP LOCKED
+   |
+   +--> internal/worker
+           +--> concorrência limitada
+           +--> processador substituível
 ```
 
 Decisões arquiteturais:
 
 - [`ADR 0001: fundação operacional`](docs/adr/0001-service-foundation.md);
-- [`ADR 0002: idempotência no PostgreSQL`](docs/adr/0002-postgres-idempotency.md).
+- [`ADR 0002: idempotência no PostgreSQL`](docs/adr/0002-postgres-idempotency.md);
+- [`ADR 0003: claim com lease e fencing`](docs/adr/0003-worker-leases.md).
 
 ## Qualidade
 
@@ -130,15 +139,17 @@ go test -race -cover ./...
 go build ./cmd/api
 ```
 
-O teste PostgreSQL é executado quando `TEST_DATABASE_URL` está definida. A CI
-inicia uma instância isolada do PostgreSQL 16 para esse cenário.
+Os testes PostgreSQL são executados quando `TEST_DATABASE_URL` está definida. A
+CI inicia uma instância isolada do PostgreSQL 16 e verifica idempotência, claims
+exclusivos, retomada após lease expirado e rejeição de workers atrasados.
 
 ## Roadmap
 
 - [x] fundação HTTP, métricas, logs e graceful shutdown;
 - [x] API idempotente para submissão de webhooks;
 - [x] PostgreSQL com migrações e fila durável de submissões;
-- [ ] worker pool com concorrência limitada;
+- [x] engine do worker pool com concorrência limitada e leases;
+- [ ] integração do worker com cliente HTTP seguro;
 - [ ] retries com backoff e dead-letter queue;
 - [ ] métricas de entrega e testes de integração;
 - [ ] teste de carga e documentação dos resultados.
